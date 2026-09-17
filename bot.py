@@ -1,17 +1,19 @@
-# NIFTY Triple EMA Scanner - STOCK - Separate from Crypto
+# NIFTY Triple EMA Scanner - FIXED with Logs
 import yfinance as yf, pandas as pd, numpy as np, requests, os, json, time
 from datetime import datetime
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 FILE = "sent.json"
-STOCKS = ["RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","SBIN.NS","BHARTIARTL.NS","ITC.NS","LT.NS","KOTAKBANK.NS","AXISBANK.NS","BAJFINANCE.NS","MARUTI.NS","WIPRO.NS","SUNPHARMA.NS","TITAN.NS","HCLTECH.NS","ULTRACEMCO.NS","POWERGRID.NS","NTPC.NS"]
+STOCKS = ["RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","SBIN.NS","BHARTIARTL.NS","ITC.NS","LT.NS","KOTAKBANK.NS","AXISBANK.NS","BAJFINANCE.NS"]
 
 def load():
     try: return json.load(open(FILE))
     except: return {}
 def save(d): json.dump(d, open(FILE,"w"))
-def tg(m): requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id":CHAT_ID,"text":m,"parse_mode":"Markdown"})
+def tg(m): 
+    print(f"Sending Telegram: {m}")
+    return requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id":CHAT_ID,"text":m,"parse_mode":"Markdown"})
 
 def adx(df):
     p=14
@@ -25,26 +27,41 @@ def adx(df):
     df['ADX']=df['DX'].ewm(alpha=1/p).mean()
     return df
 
+print("--- NIFTY SCANNER STARTED ---")
+print(f"TOKEN exists: {bool(TOKEN)}, CHAT_ID exists: {bool(CHAT_ID)}")
+
 sent=load()
+# TEST MESSAGE - ਇਹ ਜ਼ਰੂਰ ਆਊਗਾ
+tg(f"✅ NIFTY Scanner Started Test - {datetime.now().strftime('%H:%M %d-%m')}")
+
+found=0
 for s in STOCKS:
     try:
-        df=yf.download(s,period="10d",interval="5m",progress=False)
-        if len(df)<60: continue
+        print(f"Checking {s}...")
+        df=yf.download(s,period="10d",interval="15m",progress=False)
+        if len(df)<60: 
+            print(f"{s} - Not enough data {len(df)}")
+            continue
         df=adx(df)
         df['E9']=df['Close'].ewm(span=9).mean()
         df['E21']=df['Close'].ewm(span=21).mean()
         df['E50']=df['Close'].ewm(span=50).mean()
-        last,prev=df.iloc[-2],df.iloc[-3]
-        if last['ADX']<20: continue
-        if abs(last['E9']-last['E21'])<last['Close']*0.001: continue
-        if s in sent and time.time()-sent[s]<1800: continue
+        last=df.iloc[-2]
+        prev=df.iloc[-3]
+        print(f"{s} - Close:{last['Close']:.1f} E9:{last['E9']:.1f} E21:{last['E21']:.1f} ADX:{last['ADX']:.1f}")
+
+        if last['ADX']<15: continue
         golden=prev['E9']<prev['E21'] and last['E9']>last['E21'] and last['E9']>last['E50']
         death=prev['E9']>prev['E21'] and last['E9']<last['E21'] and last['E9']<last['E50']
-        t=datetime.now().strftime("%I:%M %p")
+        t=datetime.now().strftime("%H:%M %d-%m")
         if golden:
-            tg(f"BUY {s.replace('.NS','')} | NIFTY SCANNER Golden 9>21 Above 50 | ADX {last['ADX']:.1f} | Price {last['Close']:.2f} | {t}")
-            sent[s]=time.time()
+            tg(f"BUY {s.replace('.NS','')} | NIFTY Golden 9>21 Above 50 | ADX {last['ADX']:.1f} | Price {last['Close']:.2f} | {t}")
+            found+=1
         elif death:
-            tg(f"SELL {s.replace('.NS','')} | NIFTY SCANNER Death 9<21 Below 50 | ADX {last['ADX']:.1f} | Price {last['Close']:.2f} | {t}")
-    except: pass
+            tg(f"SELL {s.replace('.NS','')} | NIFTY Death 9<21 Below 50 | ADX {last['ADX']:.1f} | Price {last['Close']:.2f} | {t}")
+            found+=1
+    except Exception as e:
+        print(f"Error in {s}: {e}")
+
+print(f"--- SCAN DONE - Found {found} signals ---")
 save(sent)
