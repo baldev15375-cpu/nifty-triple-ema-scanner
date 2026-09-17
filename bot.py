@@ -20,7 +20,7 @@ STOCKS = ["RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","SBIN.NS
 for s in STOCKS:
     try:
         print(f"Checking {s}...", flush=True)
-        df = yf.download(s, period="10d", interval="15m", progress=False, auto_adjust=True)
+        df = yf.download(s, period="5d", interval="5m", progress=False, auto_adjust=True)
         if len(df) < 60:
             print(f"{s} no data {len(df)}", flush=True)
             continue
