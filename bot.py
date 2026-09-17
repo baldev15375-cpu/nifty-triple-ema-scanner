@@ -1,67 +1,46 @@
-# NIFTY Triple EMA Scanner - FIXED with Logs
-import yfinance as yf, pandas as pd, numpy as np, requests, os, json, time
+import yfinance as yf, pandas as pd, requests, os
 from datetime import datetime
-
+print("--- NIFTY SCANNER STARTED ---", flush=True)
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-FILE = "sent.json"
-STOCKS = ["RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","SBIN.NS","BHARTIARTL.NS","ITC.NS","LT.NS","KOTAKBANK.NS","AXISBANK.NS","BAJFINANCE.NS"]
+print(f"TOKEN:{bool(TOKEN)} CHAT_ID:{bool(CHAT_ID)}", flush=True)
 
-def load():
-    try: return json.load(open(FILE))
-    except: return {}
-def save(d): json.dump(d, open(FILE,"w"))
-def tg(m): 
-    print(f"Sending Telegram: {m}")
-    return requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id":CHAT_ID,"text":m,"parse_mode":"Markdown"})
+def tg(m):
+    print(f"Sending: {m}", flush=True)
+    try:
+        r = requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id":CHAT_ID,"text":m})
+        print(f"Response: {r.text[:200]}", flush=True)
+    except Exception as e:
+        print(f"TG Error: {e}", flush=True)
 
-def adx(df):
-    p=14
-    df['TR']=pd.concat([df['High']-df['Low'],abs(df['High']-df['Close'].shift()),abs(df['Low']-df['Close'].shift())],axis=1).max(axis=1)
-    df['+DM']=np.where((df['High']-df['High'].shift())>(df['Low'].shift()-df['Low']),np.maximum(df['High']-df['High'].shift(),0),0)
-    df['-DM']=np.where((df['Low'].shift()-df['Low'])>(df['High']-df['High'].shift()),np.maximum(df['Low'].shift()-df['Low'],0),0)
-    df['ATR']=df['TR'].ewm(alpha=1/p).mean()
-    df['+DI']=100*(df['+DM'].ewm(alpha=1/p).mean()/df['ATR'])
-    df['-DI']=100*(df['-DM'].ewm(alpha=1/p).mean()/df['ATR'])
-    df['DX']=100*abs(df['+DI']-df['-DI'])/(df['+DI']+df['-DI'])
-    df['ADX']=df['DX'].ewm(alpha=1/p).mean()
-    return df
+tg(f"✅ NIFTY Bot LIVE {datetime.now().strftime('%H:%M %d-%m')}")
 
-print("--- NIFTY SCANNER STARTED ---")
-print(f"TOKEN exists: {bool(TOKEN)}, CHAT_ID exists: {bool(CHAT_ID)}")
+STOCKS = ["RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","SBIN.NS","BHARTIARTL.NS","ITC.NS"]
 
-sent=load()
-# TEST MESSAGE - ਇਹ ਜ਼ਰੂਰ ਆਊਗਾ
-tg(f"✅ NIFTY Scanner Started Test - {datetime.now().strftime('%H:%M %d-%m')}")
-
-found=0
 for s in STOCKS:
     try:
-        print(f"Checking {s}...")
-        df=yf.download(s,period="10d",interval="15m",progress=False)
-        if len(df)<60: 
-            print(f"{s} - Not enough data {len(df)}")
+        print(f"Checking {s}...", flush=True)
+        df = yf.download(s, period="5d", interval="15m", progress=False, auto_adjust=True)
+        if len(df) < 50:
+            print(f"{s} no data {len(df)}", flush=True)
             continue
-        df=adx(df)
-        df['E9']=df['Close'].ewm(span=9).mean()
-        df['E21']=df['Close'].ewm(span=21).mean()
-        df['E50']=df['Close'].ewm(span=50).mean()
-        last=df.iloc[-2]
-        prev=df.iloc[-3]
-        print(f"{s} - Close:{last['Close']:.1f} E9:{last['E9']:.1f} E21:{last['E21']:.1f} ADX:{last['ADX']:.1f}")
-
-        if last['ADX']<15: continue
-        golden=prev['E9']<prev['E21'] and last['E9']>last['E21'] and last['E9']>last['E50']
-        death=prev['E9']>prev['E21'] and last['E9']<last['E21'] and last['E9']<last['E50']
-        t=datetime.now().strftime("%H:%M %d-%m")
-        if golden:
-            tg(f"BUY {s.replace('.NS','')} | NIFTY Golden 9>21 Above 50 | ADX {last['ADX']:.1f} | Price {last['Close']:.2f} | {t}")
-            found+=1
-        elif death:
-            tg(f"SELL {s.replace('.NS','')} | NIFTY Death 9<21 Below 50 | ADX {last['ADX']:.1f} | Price {last['Close']:.2f} | {t}")
-            found+=1
+        close = df['Close']
+        e9 = close.ewm(span=9).mean()
+        e21 = close.ewm(span=21).mean()
+        e50 = close.ewm(span=50).mean()
+        # last closed candle
+        price = float(close.iloc[-2])
+        v_e9 = float(e9.iloc[-2])
+        v_e21 = float(e21.iloc[-2])
+        v_e50 = float(e50.iloc[-2])
+        pv_e9 = float(e9.iloc[-3])
+        pv_e21 = float(e21.iloc[-3])
+        print(f"{s} P:{price:.1f} E9:{v_e9:.1f} E21:{v_e21:.1f} E50:{v_e50:.1f}", flush=True)
+        if pv_e9 < pv_e21 and v_e9 > v_e50:
+            tg(f"BUY {s.replace('.NS','')} Golden Cross Price {price:.2f}")
+        elif pv_e9 > pv_e21 and v_e9 < v_e21 and v_e9 < v_e50:
+            tg(f"SELL {s.replace('.NS','')} Death Cross Price {price:.2f}")
     except Exception as e:
-        print(f"Error in {s}: {e}")
+        print(f"Error {s}: {e}", flush=True)
 
-print(f"--- SCAN DONE - Found {found} signals ---")
-save(sent)
+print("--- SCAN DONE ---", flush=True)
