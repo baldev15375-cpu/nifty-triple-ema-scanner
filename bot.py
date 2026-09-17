@@ -13,34 +13,44 @@ def tg(m):
     except Exception as e:
         print(f"TG Error: {e}", flush=True)
 
-tg(f"✅ NIFTY Bot LIVE {datetime.now().strftime('%H:%M %d-%m')}")
+tg(f"✅ NIFTY Bot LIVE {datetime.now().strftime('%H:%M %d-%m-%y')}")
 
-STOCKS = ["RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","SBIN.NS","BHARTIARTL.NS","ITC.NS"]
+STOCKS = ["RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","SBIN.NS","BHARTIARTL.NS","ITC.NS","LT.NS","KOTAKBANK.NS"]
 
 for s in STOCKS:
     try:
         print(f"Checking {s}...", flush=True)
-        df = yf.download(s, period="5d", interval="15m", progress=False, auto_adjust=True)
-        if len(df) < 50:
+        df = yf.download(s, period="10d", interval="15m", progress=False, auto_adjust=True)
+        if len(df) < 60:
             print(f"{s} no data {len(df)}", flush=True)
             continue
+        # Fix for new yfinance - flatten Close
         close = df['Close']
+        if isinstance(close, pd.DataFrame):
+            close = close.iloc[:,0]
+        close = close.dropna()
+        
         e9 = close.ewm(span=9).mean()
         e21 = close.ewm(span=21).mean()
         e50 = close.ewm(span=50).mean()
-        # last closed candle
+        
         price = float(close.iloc[-2])
-        v_e9 = float(e9.iloc[-2])
-        v_e21 = float(e21.iloc[-2])
-        v_e50 = float(e50.iloc[-2])
-        pv_e9 = float(e9.iloc[-3])
-        pv_e21 = float(e21.iloc[-3])
-        print(f"{s} P:{price:.1f} E9:{v_e9:.1f} E21:{v_e21:.1f} E50:{v_e50:.1f}", flush=True)
-        if pv_e9 < pv_e21 and v_e9 > v_e50:
-            tg(f"BUY {s.replace('.NS','')} Golden Cross Price {price:.2f}")
-        elif pv_e9 > pv_e21 and v_e9 < v_e21 and v_e9 < v_e50:
-            tg(f"SELL {s.replace('.NS','')} Death Cross Price {price:.2f}")
+        ve9 = float(e9.iloc[-2])
+        ve21 = float(e21.iloc[-2])
+        ve50 = float(e50.iloc[-2])
+        pve9 = float(e9.iloc[-3])
+        pve21 = float(e21.iloc[-3])
+        
+        print(f"{s} P:{price:.1f} E9:{ve9:.1f} E21:{ve21:.1f} E50:{ve50:.1f}", flush=True)
+        
+        if pve9 < pve21 and ve9 > ve21 and ve9 > ve50:
+            tg(f"🟢 BUY {s.replace('.NS','')} Golden 9>21>50 Price {price:.2f}")
+        elif pve9 > pve21 and ve9 < ve21 and ve9 < ve50:
+            tg(f"🔴 SELL {s.replace('.NS','')} Death 9<21<50 Price {price:.2f}")
+            
     except Exception as e:
         print(f"Error {s}: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
 
 print("--- SCAN DONE ---", flush=True)
